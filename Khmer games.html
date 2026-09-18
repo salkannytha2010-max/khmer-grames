@@ -1,0 +1,532 @@
+
+អ្នកគឺជាអ្នកជំនាញអភិវឌ្ឍន៍បច្ចេកវិទ្យាអប់រំកុមារ (EdTech Senior Developer) និងជាអ្នកជំនាញ Frontend Web Developer ដែលមានឯកទេសខ្ពស់លើ Computer Vision (MediaPipe)។
+
+សូមជួយបង្កើត «ល្បែងសិក្សាអន្តរកម្មបាញ់ឡាស៊ែរតាមកាយវិការដៃ (Webcam Hand Tracking)» សម្រាប់សិស្សានុសិស្សបឋមសិក្សានៅកម្ពុជា <!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ល្បែងបាញ់ឡាស៊ែរគណិតវិទ្យា - Laser Math Quest</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Kantumruy Pro & Orbitron -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;600;700&family=Orbitron:wght@600;800;900&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe Hands Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        * {
+            font-family: 'Kantumruy Pro', cursive, sans-serif;
+            user-select: none;
+        }
+        .font-tech {
+            font-family: 'Orbitron', sans-serif;
+        }
+        body {
+            background-color: #030712;
+            overflow: hidden;
+        }
+        .glass-card {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(6, 182, 212, 0.4);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.15), inset 0 0 15px rgba(6, 182, 212, 0.1);
+        }
+        @keyframes laserPulse {
+            0% { transform: scale(1); box-shadow: 0 0 10px #06b6d4, inset 0 0 10px #06b6d4; }
+            50% { transform: scale(1.15); box-shadow: 0 0 25px #22d3ee, inset 0 0 15px #22d3ee; }
+            100% { transform: scale(1); box-shadow: 0 0 10px #06b6d4, inset 0 0 10px #06b6d4; }
+        }
+        .laser-pointer {
+            animation: laserPulse 1s infinite ease-in-out;
+        }
+        .cyber-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(6, 182, 212, 0.07) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(6, 182, 212, 0.07) 1px, transparent 1px);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex flex-col justify-between p-4 cyber-grid text-white overflow-hidden">
+
+    <canvas id="gameCanvas" class="absolute inset-0 w-full h-full z-0 pointer-events-auto cursor-crosshair"></canvas>
+    <video id="webcam" class="hidden" playsinline></video>
+
+    <!-- Top HUD Bar -->
+    <header class="relative z-10 w-full max-w-5xl mx-auto flex justify-between items-center glass-card rounded-2xl px-6 py-3 border-cyan-500/50">
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">⭐</span>
+                <span class="text-gray-400 font-bold text-sm sm:text-base">ពិន្ទុ:</span>
+                <span id="scoreText" class="text-cyan-400 font-tech text-2xl sm:text-3xl font-extrabold tracking-wider">0</span>
+            </div>
+            <div class="flex items-center gap-2 border-l border-cyan-500/30 pl-6">
+                <span class="text-2xl">🎯</span>
+                <span class="text-gray-400 font-bold text-sm sm:text-base">សំណួរ:</span>
+                <span id="questionCountText" class="text-amber-400 font-tech text-2xl sm:text-3xl font-extrabold">1/10</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button id="cameraToggleBtn" onclick="toggleCamera()" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-400 transition-all flex items-center gap-2 text-xs sm:text-sm font-semibold">
+                <span id="cameraIcon">📹</span> <span id="cameraBtnText">បើកកាមេរ៉ា</span>
+            </button>
+            <button id="soundToggleBtn" onclick="toggleAudio()" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-400 transition-all text-sm font-semibold">
+                🔊
+            </button>
+        </div>
+    </header>
+
+    <!-- Question Area -->
+    <div id="questionContainer" class="relative z-10 w-full max-w-3xl mx-auto text-center mt-2">
+        <div class="glass-card rounded-2xl p-4 sm:p-6 border-cyan-400/60 shadow-[0_0_30px_rgba(6,182,212,0.2)]">
+            <span class="inline-block px-3 py-1 bg-cyan-500/20 text-cyan-300 rounded-full text-xs font-semibold mb-2 border border-cyan-500/40">ថ្នាក់ទី ២ • គណិតវិទ្យា</span>
+            <h1 id="questionText" class="text-2xl sm:text-4xl font-bold text-white tracking-wide drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+                កំពុងផ្ទុកសំណួរ...
+            </h1>
+        </div>
+    </div>
+
+    <!-- Answers Container -->
+    <div id="answersContainer" class="relative z-10 w-full max-w-5xl mx-auto my-auto grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="relative z-10 w-full max-w-5xl mx-auto glass-card rounded-xl px-4 py-2 text-center text-xs sm:text-sm text-cyan-300/80 border-cyan-500/30 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+            <span id="statusMessage">តម្រង់ចុងម្រាមដៃចង្អុលលើចម្លើយ ( hover ០.៧វិនាទី ) ឬចុច Mouse</span>
+        </div>
+        <div class="hidden sm:block text-slate-400 font-tech text-[10px]">
+            EDTECH CAMBODIA • HAND TRACKING HUD
+        </div>
+    </footer>
+
+    <!-- Result Modal -->
+    <div id="resultModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="glass-card rounded-3xl p-8 max-w-md w-full text-center border-2 border-cyan-400 shadow-[0_0_50px_rgba(6,182,212,0.4)]">
+            <div id="resultEmoji" class="text-6xl mb-4">🏆</div>
+            <h2 id="resultTitle" class="text-3xl font-bold text-cyan-300 mb-2">អស្ចារ្យណាស់!</h2>
+            <p id="resultScoreText" class="text-lg text-gray-300 mb-6">អ្នកទទួលបានពិន្ទុ៖ <span class="text-amber-400 font-bold text-2xl font-tech">0</span></p>
+            <button onclick="restartGame()" class="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-lg shadow-lg shadow-cyan-500/50 transition-all transform hover:scale-105 active:scale-95">
+                លេងម្តងទៀត 🔄
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const questionsData = [
+            { question: "តើចំណោទ ៥ + ៣ ស្មើនឹងប៉ុន្មាន? 🍎", options: ["៧", "៨", "៩"], answer: 1 },
+            { question: "តើចំណោទ ១២ - ៤ ស្មើនឹងប៉ុន្មាន? 🎈", options: ["៨", "៦", "១០"], answer: 0 },
+            { question: "តើសញ្ញាមួយណាជាសញ្ញាបូក? ➕", options: ["➖", "➕", "✖️"], answer: 1 },
+            { question: "តើលេខណាធំជាងគេ? 🔢", options: ["១៥", "២៥", "១៩"], answer: 1 },
+            { question: "តើរូបមួយណាជារូបការេ? 🔲", options: ["🔺", "⚪", "⬛"], answer: 2 },
+            { question: "តើ ១០ + ១០ ស្មើនឹងប៉ុន្មាន? ⭐️", options: ["២០", "៣០", "១៥"], answer: 0 },
+            { question: "តើលេខ ៧ ជាចំនួនគូ ឬសេស? ❓", options: ["ចំនួនគូ", "ចំនួនសេស", "មិនមែនទាំងពីរ"], answer: 1 },
+            { question: "តើចំណោទ ៩ - ៩ ស្មើនឹងប៉ុន្មាន? 🎯", options: ["១", "៩", "០"], answer: 2 },
+            { question: "តើលេខណាតូចជាងគេ? 📉", options: ["៣", "៨", "១"], answer: 2 },
+            { question: "តើ ៦ + ៤ ស្មើនឹងប៉ុន្មាន? 🎁", options: ["១០", "១១", "៩"], answer: 0 }
+        ];
+
+        let currentQuestionIdx = 0;
+        let score = 0;
+        let isAudioMuted = false;
+        let isCameraActive = false;
+        let dwellStartTime = null;
+        let activeHoverIndex = -1;
+        const DWELL_THRESHOLD = 700;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSound(type) {
+            if (isAudioMuted) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+
+            if (type === 'laser') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'correct') {
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.15, now + index * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.08 + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + index * 0.08);
+                    osc.stop(now + index * 0.08 + 0.3);
+                });
+            } else if (type === 'wrong') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(130, now);
+                osc.frequency.setValueAtTime(110, now + 0.15);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        }
+
+        function toggleAudio() {
+            isAudioMuted = !isAudioMuted;
+            document.getElementById('soundToggleBtn').innerText = isAudioMuted ? '🔇' : '🔊';
+        }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        let lasers = [];
+        let handLandmarks = null;
+        let pointerPos = { x: -100, y: -100, active: false };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 12;
+                this.vy = (Math.random() - 0.5) * 12;
+                this.radius = Math.random() * 4 + 2;
+                this.color = color;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.015;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function triggerLaserBeam(startX, startY, targetX, targetY) {
+            lasers.push({
+                sx: startX, sy: startY,
+                tx: targetX, ty: targetY,
+                alpha: 1.0
+            });
+            playSound('laser');
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isCameraActive) {
+                pointerPos.x = e.clientX;
+                pointerPos.y = e.clientY;
+                pointerPos.active = true;
+            }
+        });
+
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (handLandmarks) {
+                drawHandHUD(handLandmarks);
+            }
+
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const l = lasers[i];
+                ctx.save();
+                ctx.strokeStyle = `rgba(34, 211, 238, ${l.alpha})`;
+                ctx.lineWidth = 6;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#06b6d4';
+                ctx.beginPath();
+                ctx.moveTo(l.sx, l.sy);
+                ctx.lineTo(l.tx, l.ty);
+                ctx.stroke();
+                ctx.restore();
+
+                l.alpha -= 0.1;
+                if (l.alpha <= 0) lasers.splice(i, 1);
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw(ctx);
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            if (pointerPos.active) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(pointerPos.x, pointerPos.y, 12, 0, Math.PI * 2);
+                ctx.fillStyle = '#22d3ee';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#06b6d4';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(pointerPos.x, pointerPos.y, 22, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(6, 182, 212, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+
+                checkAnswerHover(pointerPos.x, pointerPos.y);
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawHandHUD(landmarks) {
+            const connections = [
+                [0,1],[1,2],[2,3],[3,4],
+                [0,5],[5,6],[6,7],[7,8],
+                [5,9],[9,10],[10,11],[11,12],
+                [9,13],[13,14],[14,15],[15,16],
+                [13,17],[17,18],[18,19],[19,20],[0,17]
+            ];
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(6, 182, 212, 0.6)';
+            ctx.lineWidth = 3;
+
+            connections.forEach(([i, j]) => {
+                const pt1 = { x: (1 - landmarks[i].x) * canvas.width, y: landmarks[i].y * canvas.height };
+                const pt2 = { x: (1 - landmarks[j].x) * canvas.width, y: landmarks[j].y * canvas.height };
+                ctx.beginPath();
+                ctx.moveTo(pt1.x, pt1.y);
+                ctx.lineTo(pt2.x, pt2.y);
+                ctx.stroke();
+            });
+
+            landmarks.forEach((lm) => {
+                const x = (1 - lm.x) * canvas.width;
+                const y = lm.y * canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+            });
+            ctx.restore();
+        }
+
+        requestAnimationFrame(renderLoop);
+
+        const videoElement = document.getElementById('webcam');
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        hands.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handLandmarks = results.multiHandLandmarks[0];
+                const indexTip = handLandmarks[8];
+                pointerPos.x = (1 - indexTip.x) * canvas.width;
+                pointerPos.y = indexTip.y * canvas.height;
+                pointerPos.active = true;
+            } else {
+                handLandmarks = null;
+            }
+        });
+
+        let camera = null;
+
+        function toggleCamera() {
+            if (!isCameraActive) {
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({ image: videoElement });
+                    },
+                    width: 640,
+                    height: 480
+                });
+                camera.start()
+                    .then(() => {
+                        isCameraActive = true;
+                        document.getElementById('cameraBtnText').innerText = "បិទកាមេរ៉ា";
+                        document.getElementById('statusMessage').innerText = "កាមេរ៉ាសកម្ម៖ លើកម្រាមដៃចង្អុលតម្រង់ចម្លើយ";
+                    })
+                    .catch(err => {
+                        document.getElementById('statusMessage').innerText = "មិនអាចបើកកាមេរ៉ាបានទេ! សូមប្រើ Mouse ឬ Touchscreen";
+                    });
+            } else {
+                if (camera) camera.stop();
+                isCameraActive = false;
+                handLandmarks = null;
+                document.getElementById('cameraBtnText').innerText = "បើកកាមេរ៉ា";
+                document.getElementById('statusMessage').innerText = "របៀបចលនា៖ ប្រើ Mouse ឬ Touchscreen";
+            }
+        }
+
+        function renderQuestion() {
+            const q = questionsData[currentQuestionIdx];
+            document.getElementById('questionText').innerText = q.question;
+            document.getElementById('questionCountText').innerText = `${currentQuestionIdx + 1}/${questionsData.length}`;
+
+            const container = document.getElementById('answersContainer');
+            container.innerHTML = '';
+
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = `answer-card relative glass-card p-6 sm:p-8 rounded-2xl text-2xl sm:text-4xl font-bold transition-all transform duration-200 border-2 border-cyan-500/40 hover:border-cyan-300 flex flex-col items-center justify-center gap-3 overflow-hidden group`;
+                btn.dataset.index = idx;
+                
+                btn.innerHTML = `
+                    <div class="hover-progress absolute bottom-0 left-0 h-2 bg-gradient-to-r from-cyan-400 to-amber-400 w-0 transition-all duration-75"></div>
+                    <span class="text-cyan-400 text-xs font-tech tracking-widest">OPTION 0${idx + 1}</span>
+                    <span class="text-white drop-shadow-md group-hover:scale-110 transition-transform">${opt}</span>
+                `;
+
+                btn.onclick = () => selectAnswer(idx, btn);
+                container.appendChild(btn);
+            });
+        }
+
+        function checkAnswerHover(x, y) {
+            const cards = document.querySelectorAll('.answer-card');
+            let hoveringIdx = -1;
+
+            cards.forEach((card, idx) => {
+                const rect = card.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    hoveringIdx = idx;
+                }
+            });
+
+            if (hoveringIdx !== -1) {
+                if (activeHoverIndex !== hoveringIdx) {
+                    activeHoverIndex = hoveringIdx;
+                    dwellStartTime = Date.now();
+                } else {
+                    const elapsedTime = Date.now() - dwellStartTime;
+                    const progressPercent = Math.min(100, (elapsedTime / DWELL_THRESHOLD) * 100);
+                    
+                    const card = cards[hoveringIdx];
+                    const progressBar = card.querySelector('.hover-progress');
+                    if (progressBar) progressBar.style.width = `${progressPercent}%`;
+
+                    if (elapsedTime >= DWELL_THRESHOLD) {
+                        dwellStartTime = null;
+                        selectAnswer(hoveringIdx, card);
+                    }
+                }
+            } else {
+                if (activeHoverIndex !== -1) {
+                    cards.forEach(card => {
+                        const progressBar = card.querySelector('.hover-progress');
+                        if (progressBar) progressBar.style.width = '0%';
+                    });
+                }
+                activeHoverIndex = -1;
+                dwellStartTime = null;
+            }
+        }
+
+        function selectAnswer(idx, cardElement) {
+            const rect = cardElement.getBoundingClientRect();
+            const targetX = rect.left + rect.width / 2;
+            const targetY = rect.top + rect.height / 2;
+
+            const startX = pointerPos.active ? pointerPos.x : window.innerWidth / 2;
+            const startY = pointerPos.active ? pointerPos.y : window.innerHeight;
+
+            triggerLaserBeam(startX, startY, targetX, targetY);
+
+            const q = questionsData[currentQuestionIdx];
+            if (idx === q.answer) {
+                playSound('correct');
+                createExplosion(targetX, targetY, '#22d3ee');
+                score += 10;
+                document.getElementById('scoreText').innerText = score;
+                cardElement.classList.add('bg-emerald-500/30', 'border-emerald-400');
+            } else {
+                playSound('wrong');
+                createExplosion(targetX, targetY, '#ef4444');
+                cardElement.classList.add('bg-rose-500/30', 'border-rose-400');
+            }
+
+            document.querySelectorAll('.answer-card').forEach(b => b.style.pointerEvents = 'none');
+
+            setTimeout(() => {
+                currentQuestionIdx++;
+                if (currentQuestionIdx < questionsData.length) {
+                    renderQuestion();
+                } else {
+                    showFinalResults();
+                }
+            }, 1000);
+        }
+
+        function showFinalResults() {
+            const modal = document.getElementById('resultModal');
+            document.getElementById('resultScoreText').innerHTML = `អ្នកទទួលបានពិន្ទុ៖ <span class="text-amber-400 font-bold text-3xl font-tech">${score}</span> / ${questionsData.length * 10}`;
+            
+            if (score >= 80) {
+                document.getElementById('resultEmoji').innerText = '🏆';
+                document.getElementById('resultTitle').innerText = 'ពូកែណាស់! ឆ្នើមខ្លាំង!';
+            } else if (score >= 50) {
+                document.getElementById('resultEmoji').innerText = '👏';
+                document.getElementById('resultTitle').innerText = 'ល្អណាស់! ខិតខំបន្ថែមទៀត!';
+            } else {
+                document.getElementById('resultEmoji').innerText = '💪';
+                document.getElementById('resultTitle').innerText = 'ព្យាយាមម្តងទៀតណា!';
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function restartGame() {
+            score = 0;
+            currentQuestionIdx = 0;
+            document.getElementById('scoreText').innerText = score;
+            document.getElementById('resultModal').classList.add('hidden');
+            renderQuestion();
+        }
+
+        renderQuestion();
+    </script>
+</body>
+</html>
